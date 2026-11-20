@@ -46,7 +46,8 @@ let recordedPath = '';
 let ignoreGotoUntil = 0;
 let responseWaiters = [];
 let testsDir = 'tests';
-let suite = 'harness-test';
+const DEFAULT_SCENARIO = 'harness-test';
+let suite = DEFAULT_SCENARIO;
 let shotPickStep = null;
 
 const RESPONSE_TIMEOUT = 5000;
@@ -167,11 +168,11 @@ function generatedCode() {
 	];
 
 	if (!steps.length)
-		return [...imports, "test('harness test', async ({ page }) => {});", ''].join('\n');
+		return [...imports, `test(${quote(suite)}, async ({ page }) => {});`, ''].join('\n');
 
 	return [
 		...imports,
-		`test('harness test', async ({ page }) => {`,
+		`test(${quote(suite)}, async ({ page }) => {`,
 		...stepLines(steps),
 		'});',
 		''
@@ -930,6 +931,7 @@ function loadTest(specIndex, testIndex) {
 
 	steps = parsed;
 	suite = suiteName(spec.file);
+	$('scenario').value = suite;
 	setTab('actions');
 	renderSteps();
 	renderCode();
@@ -939,6 +941,10 @@ function loadTest(specIndex, testIndex) {
 }
 
 $('load').addEventListener('click', loadPath);
+$('scenario').addEventListener('input', () => {
+	suite = $('scenario').value.trim() || DEFAULT_SCENARIO;
+	renderCode();
+});
 $('app-path').addEventListener('keydown', (event) => {
 	if (event.key === 'Enter') loadPath();
 });

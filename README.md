@@ -58,7 +58,8 @@ The iframe path is relative (so `http://localhost:5173/route`, will just show `/
   resumes. Screenshots are skipped because Playwright is not running in the
   harness; a failed step stops the replay with a message.
 - **Code** - the generated Playwright test, importable as `saveScreenshot` /
-  `saveElementScreenshot` from `./utils/screenshot`.
+  `saveElementScreenshot` from `./utils/screenshot`. The **Scenario name** field
+  sets the test title and the screenshot folder, defaulting to `harness-test`.
 - **Tests** - every `*.spec.ts` under the tests directory, with its test titles
   and source. **Load** turns a test's supported statements back into steps in the
   Actions tab and reports lines it could not represent (`getByRole`, waits,
