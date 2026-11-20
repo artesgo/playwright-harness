@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Test Harness</title>
+		<style>
+			:root {
+				--bg: #1d222b;
+				--panel: #272e3a;
+				--fg: #e7ebf3;
+				--muted: #9aa5b5;
+				--line: #3b4453;
+				--accent: #7c5cff;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			[hidden] {
+				display: none !important;
+			}
+
+			body {
+				margin: 0;
+				height: 100vh;
+				overflow: hidden;
+			}
+
+			#app {
+				display: block;
+				width: 100%;
+				height: 100%;
+				border: 0;
+				background: #fff;
+			}
+
+			.harness {
+				position: fixed;
+				inset: 0;
+				display: flex;
+				flex-direction: column;
+				background: var(--bg);
+				color: var(--fg);
+				font:
+					13px/1.45 ui-sans-serif,
+					system-ui,
+					sans-serif;
+			}
+
+			.bar {
+				display: flex;
+				align-items: center;
+				gap: 0.5rem;
+				flex-wrap: wrap;
+				padding: 0.5rem 0.75rem;
+				background: var(--panel);
+				border-bottom: 1px solid var(--line);
+			}
+
+			.bar strong {
+				margin-right: 0.5rem;
+				font-weight: 600;
+			}
+
+			.target {
+				margin-right: 0.5rem;
+				color: var(--muted);
+				font-size: 0.75rem;
+			}
+
+			.legend {
+				flex: 1;
+				color: var(--muted);
+				font-size: 0.75rem;
+			}
+
+			.path {
+				width: 10rem;
+			}
+
+			.stage {
+				position: relative;
+				flex: 1;
+				min-height: 0;
+			}
+
+			button,
+			input,
+			select {
+				font: inherit;
+				color: inherit;
+			}
+
+			button {
+				padding: 0.25rem 0.6rem;
+				border: 1px solid var(--line);
+				border-radius: 0.35rem;
+				background: var(--panel);
+				cursor: pointer;
+			}
+
+			button:hover:not(:disabled),
+			button.active {
+				background: var(--accent);
+				border-color: var(--accent);
+				color: #fff;
+			}
+
+			button:disabled {
+				opacity: 0.45;
+				cursor: default;
+			}
+
+			input,
+			select {
+				width: 100%;
+				padding: 0.3rem 0.45rem;
+				border: 1px solid var(--line);
+				border-radius: 0.35rem;
+				background: var(--panel);
+				min-width: 0;
+			}
+
+			input:focus,
+			select:focus {
+				outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+				outline-offset: 1px;
+			}
+
+			.panel {
+				position: absolute;
+				right: 1rem;
+				bottom: 1rem;
+				width: min(30rem, calc(100vw - 2rem));
+				max-height: calc(100% - 4rem);
+				display: flex;
+				flex-direction: column;
+				background: var(--panel);
+				border: 1px solid var(--line);
+				border-radius: 0.75rem;
+				box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+				overflow: hidden;
+			}
+
+			.panel.collapsed {
+				width: auto;
+			}
+
+			.panel.collapsed .panel-body {
+				display: none;
+			}
+
+			.panel-head {
+				display: flex;
+				align-items: center;
+				border-bottom: 1px solid var(--line);
+				cursor: move;
+				touch-action: none;
+				user-select: none;
+			}
+
+			.panel-grip {
+				padding: 0.4rem 0.6rem;
+				color: var(--muted);
+				font-weight: 700;
+				line-height: 1.15;
+			}
+
+			.tabs {
+				display: flex;
+				flex: 1;
+			}
+
+			.tabs button {
+				flex: 1;
+				border: 0;
+				border-radius: 0;
+				padding: 0.55rem;
+				background: transparent;
+			}
+
+			.tabs button.active {
+				border-bottom: 2px solid var(--accent);
+				background: transparent;
+				color: inherit;
+			}
+
+			.icon {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				border: 0;
+				background: transparent;
+				padding: 0.25rem 0.5rem;
+			}
+
+			.panel-body {
+				overflow: auto;
+				padding: 0.75rem;
+			}
+
+			.fields {
+				display: grid;
+				gap: 0.6rem;
+			}
+
+			label {
+				display: grid;
+				gap: 0.3rem;
+				font-size: 0.75rem;
+				font-weight: 600;
+			}
+
+			strong {
+				font-weight: 600;
+			}
+
+			label .row {
+				margin-top: 0;
+			}
+
+			.combo {
+				position: relative;
+				flex: 1;
+				min-width: 0;
+			}
+
+			.suggestions {
+				position: absolute;
+				top: calc(100% + 2px);
+				left: 0;
+				right: 0;
+				z-index: 10;
+				max-height: 12rem;
+				overflow: auto;
+				margin: 0;
+				padding: 0.2rem;
+				list-style: none;
+				background: var(--panel);
+				border: 1px solid var(--line);
+				border-radius: 0.4rem;
+				box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+			}
+
+			.suggestions button {
+				display: block;
+				width: 100%;
+				padding: 0.3rem 0.4rem;
+				border: 0;
+				border-radius: 0.25rem;
+				background: transparent;
+				text-align: left;
+				font-size: 0.75rem;
+			}
+
+			.suggestions button:hover {
+				background: var(--accent);
+				color: #fff;
+			}
+
+			.row {
+				display: flex;
+				align-items: center;
+				gap: 0.4rem;
+				margin-top: 0.6rem;
+			}
+
+			.row input {
+				flex: 1;
+				min-width: 0;
+			}
+
+			.primary {
+				background: var(--accent);
+				border-color: var(--accent);
+				color: #fff;
+			}
+
+			.hint {
+				margin: 0.6rem 0 0;
+				opacity: 0.7;
+				font-size: 0.8rem;
+			}
+
+			.step-list {
+				margin: 0.6rem 0 0;
+				padding-left: 1.25rem;
+			}
+
+			.step-list li {
+				display: flex;
+				align-items: center;
+				gap: 0.4rem;
+				padding: 0.15rem 0;
+			}
+
+			.step-text {
+				flex: 1;
+				min-width: 0;
+			}
+
+			.step-detail {
+				margin-left: 0.35rem;
+				opacity: 0.7;
+				word-break: break-all;
+			}
+
+			.breakpoint {
+				color: var(--muted);
+			}
+
+			.warn {
+				align-self: center;
+				color: #ffb020;
+				font-weight: 700;
+				cursor: help;
+			}
+
+			.breakpoint.on {
+				color: #ff5c5c;
+			}
+
+			.camera svg {
+				display: block;
+			}
+
+			.camera.on {
+				color: var(--accent);
+			}
+
+			.element-shot svg {
+				display: block;
+			}
+
+			.element-shot.on {
+				color: #4fc3f7;
+			}
+
+			.code-head {
+				margin-top: 0;
+				justify-content: space-between;
+			}
+
+			pre {
+				margin: 0.5rem 0 0;
+				padding: 0.6rem;
+				max-height: 16rem;
+				overflow: auto;
+				font-size: 0.75rem;
+				background: var(--bg);
+				border-radius: 0.4rem;
+				white-space: pre;
+			}
+
+			details {
+				margin-bottom: 0.5rem;
+			}
+
+			summary {
+				cursor: pointer;
+				padding: 0.25rem 0;
+			}
+
+			.count {
+				margin-left: 0.4rem;
+				color: var(--muted);
+			}
+
+			.test-load {
+				margin-right: 0.35rem;
+				padding: 0 0.35rem;
+				font-size: 0.7rem;
+			}
+
+			.delay {
+				display: flex;
+				align-items: center;
+				gap: 0.3rem;
+				margin-left: auto;
+				font-size: 0.75rem;
+				font-weight: 600;
+			}
+
+			.delay input {
+				flex: none;
+				width: 4rem;
+			}
+
+			ul {
+				margin: 0.25rem 0;
+				padding-left: 1.25rem;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="harness">
+			<div class="bar">
+				<strong>Test Harness</strong>
+				<span class="target" id="app-target" title="The --app target being proxied"></span>
+				<input id="app-path" class="path" aria-label="App path" value="/" />
+				<button id="load">Load</button>
+				<button id="reload">Reload</button>
+				<button id="record">Record</button>
+				<button id="pick">Pick element</button>
+				<button id="toggle-testids">Test IDs</button>
+				<button id="refresh-tests">Refresh tests</button>
+			</div>
+
+			<div class="bar record-bar" id="record-bar" hidden>
+				<strong>Recording</strong>
+				<span class="legend"
+					>click → click · Alt+click → visible · Shift+click → text · Ctrl/Cmd+click → element shot
+					· Enter/Esc/arrows → press</span
+				>
+				<button id="record-shot">Screenshot page</button>
+				<button id="record-network">Record network</button>
+			</div>
+
+			<div class="stage">
+				<iframe id="app" src="/" title="Running app"></iframe>
+
+				<aside class="panel" id="panel">
+					<div class="panel-head">
+						<div class="panel-grip" title="Drag to move" aria-hidden="true">⋮</div>
+						<div class="tabs">
+							<button data-tab="actions" class="active">Actions</button>
+							<button data-tab="code">Code</button>
+							<button data-tab="tests" id="tests-tab">Tests (0)</button>
+						</div>
+						<button class="icon" id="collapse" aria-label="Collapse harness" aria-expanded="true">
+							▾
+						</button>
+					</div>
+
+					<div class="panel-body" id="actions-panel">
+						<div class="fields">
+							<label>
+								Action
+								<select id="action">
+									<option value="goto">page.goto</option>
+									<option value="click" selected>click</option>
+									<option value="fill">fill</option>
+									<option value="press">press</option>
+									<option value="expectVisible">expect visible</option>
+									<option value="expectText">expect text</option>
+									<option value="screenshotPage">screenshot page</option>
+									<option value="screenshotElement">screenshot element</option>
+								</select>
+							</label>
+
+							<label id="selector-field">
+								Selector
+								<span class="row">
+									<span class="combo">
+										<input
+											id="selector"
+											placeholder="button.submit"
+											autocomplete="off"
+											aria-autocomplete="list"
+										/>
+										<ul class="suggestions" id="suggestions" hidden></ul>
+									</span>
+									<button id="pick-inline">Pick</button>
+								</span>
+							</label>
+
+							<label id="value-field">
+								<span id="value-label">Value</span>
+								<input id="value" />
+							</label>
+
+							<label id="path-field" hidden>
+								Screenshot path
+								<input id="shot-path" value="test-results/screenshots/harness.png" />
+							</label>
+						</div>
+
+						<p class="hint" id="step-error" hidden></p>
+
+						<div class="row">
+							<button class="primary" id="add-step">Add step</button>
+							<button id="replay" disabled>Replay</button>
+							<button id="clear-steps" disabled>Clear</button>
+							<label class="delay"
+								>Delay
+								<input id="replay-delay" type="number" min="0" step="50" value="200" /> ms</label
+							>
+						</div>
+
+						<p class="hint" id="action-status" hidden></p>
+
+						<ol class="step-list" id="steps" hidden></ol>
+						<p class="hint" id="steps-hint">Add actions to build a test.</p>
+					</div>
+
+					<div class="panel-body" id="code-panel" hidden>
+						<div class="row code-head">
+							<strong>Generated test</strong>
+							<button id="copy">Copy</button>
+						</div>
+						<pre id="code"></pre>
+					</div>
+
+					<div class="panel-body" id="tests-panel" hidden></div>
+				</aside>
+			</div>
+		</div>
+
+		<script type="module" src="./harness.js"></script>
+	</body>
+</html>

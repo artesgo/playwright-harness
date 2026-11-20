@@ -1,0 +1,38 @@
+{
+	"name": "playwright-harness",
+	"version": "0.5.0",
+	"description": "Framework-agnostic Playwright harness: browse your app in an iframe, pick elements, and generate test steps.",
+	"type": "module",
+	"bin": {
+		"playwright-harness": "./server.mjs"
+	},
+	"files": [
+		"index.html",
+		"harness.js",
+		"record.mjs",
+		"server.mjs",
+		"specs.mjs",
+		"steps.mjs"
+	],
+	"engines": {
+		"node": ">=18"
+	},
+	"keywords": [
+		"playwright",
+		"e2e",
+		"testing",
+		"harness",
+		"data-testid"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/artesgo/playwright-harness.git",
+		"directory": "packages/playwright-harness"
+	},
+	"scripts": {
+		"start": "node server.mjs",
+		"test": "node --test specs.test.mjs record.test.mjs steps.test.mjs",
+		"prepublishOnly": "npm test"
+	}
+}
