@@ -1,6 +1,6 @@
 {
 	"name": "playwright-harness",
-	"version": "0.6.0",
+	"version": "0.7.0",
 	"description": "Framework-agnostic Playwright harness: browse your app in an iframe, pick elements, and generate test steps.",
 	"type": "module",
 	"bin": {

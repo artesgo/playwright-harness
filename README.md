@@ -51,11 +51,14 @@ The iframe path is relative (so `http://localhost:5173/route`, will just show `/
   `<step>-<testid>.png` (element shots add `-element`), where the suite is the
   spec file of the test loaded from the Tests tab. A `!` marks steps recorded at
   the same moment, such as a label and the control it forwards the click to.
+  Drag a step onto another to reorder them.
 - **Replay** - runs the step list inside the iframe: navigations, clicks, fills,
   presses, assertions and recorded response waits, with a configurable delay
   between steps. Click the dot
   next to a step to set a breakpoint; replay pauses before it and **Continue**
-  resumes. Screenshots are skipped because Playwright is not running in the
+  resumes. The current step is highlighted in the list, and a ring is drawn
+  around the element about to be clicked or otherwise interacted with.
+  Screenshots are skipped because Playwright is not running in the
   harness; a failed step stops the replay with a message.
 - **Code** - the generated Playwright test, importable as `saveScreenshot` /
   `saveElementScreenshot` from `./utils/screenshot`. The **Scenario name** field

@@ -57,6 +57,8 @@ const GOTO_AFTER_CLICK_DELAY = 1000;
 let replaying = false;
 let paused = false;
 let resumeReplay = null;
+let currentStep = null;
+let dragFrom = null;
 let specFiles = [];
 
 const action = () => $('action').value;
@@ -211,9 +213,11 @@ function renderSteps() {
 			const elementShot = !!step.elementShot;
 			const elementDisabled = replaying || step.action === 'awaitResponse';
 			const warn = recordedAtSameTime(steps, step, index);
-			return `<li>${warn ? '<span class="warn" title="Another action was recorded at the same time" aria-label="Another action was recorded at the same time">!</span>' : ''}<span class="step-text"><strong>${escapeHtml(info.label)}</strong><span class="step-detail">${escapeHtml(info.detail)}</span></span><button class="icon breakpoint${step.breakpoint ? ' on' : ''}" data-break="${index}" aria-pressed="${!!step.breakpoint}" title="Breakpoint: pause before this step" aria-label="Toggle breakpoint for step ${index + 1}">●</button><button class="icon camera${shot ? ' on' : ''}" data-shot="${index}" aria-pressed="${shot}" title="Page screenshot after this step" aria-label="Toggle page screenshot after step ${index + 1}"${shotDisabled ? ' disabled' : ''}>${CAMERA_ICON}</button><button class="icon element-shot${elementShot ? ' on' : ''}" data-element-shot="${index}" aria-pressed="${elementShot}" title="Element screenshot after this step" aria-label="Toggle element screenshot after step ${index + 1}"${elementDisabled ? ' disabled' : ''}>${ELEMENT_ICON}</button><button class="icon" data-index="${index}" aria-label="Remove step"${replaying ? ' disabled' : ''}>×</button></li>`;
+			const current = step === currentStep;
+			return `<li data-step="${index}" draggable="${!replaying}" class="${current ? 'current' : ''}">${warn ? '<span class="warn" title="Another action was recorded at the same time" aria-label="Another action was recorded at the same time">!</span>' : ''}<span class="step-text"><strong>${escapeHtml(info.label)}</strong><span class="step-detail">${escapeHtml(info.detail)}</span></span><button class="icon breakpoint${step.breakpoint ? ' on' : ''}" data-break="${index}" aria-pressed="${!!step.breakpoint}" title="Breakpoint: pause before this step" aria-label="Toggle breakpoint for step ${index + 1}">●</button><button class="icon camera${shot ? ' on' : ''}" data-shot="${index}" aria-pressed="${shot}" title="Page screenshot after this step" aria-label="Toggle page screenshot after step ${index + 1}"${shotDisabled ? ' disabled' : ''}>${CAMERA_ICON}</button><button class="icon element-shot${elementShot ? ' on' : ''}" data-element-shot="${index}" aria-pressed="${elementShot}" title="Element screenshot after this step" aria-label="Toggle element screenshot after step ${index + 1}"${elementDisabled ? ' disabled' : ''}>${ELEMENT_ICON}</button><button class="icon" data-index="${index}" aria-label="Remove step"${replaying ? ' disabled' : ''}>×</button></li>`;
 		})
 		.join('');
+	stepsEl.querySelector('.current')?.scrollIntoView({ block: 'nearest' });
 	stepsEl.hidden = !steps.length;
 	stepsHint.hidden = !!steps.length;
 	clearButton.disabled = !steps.length || replaying;
@@ -417,6 +421,8 @@ async function replay() {
 	try {
 		for (const [index, { step, waits }] of groups.entries()) {
 			const label = describeStep(step).label;
+			currentStep = step;
+			renderSteps();
 			if (step.breakpoint || waits.some((wait) => wait.breakpoint)) await pauseBefore(index, label);
 
 			setStatus(`Replaying ${index + 1}/${groups.length}: ${label}`);
@@ -448,6 +454,8 @@ async function replay() {
 		replaying = false;
 		paused = false;
 		resumeReplay = null;
+		currentStep = null;
+		hideFocusRing();
 		renderSteps();
 	}
 }
@@ -482,6 +490,7 @@ async function runStep(step) {
 
 	const element = await waitForElement(step.selector);
 	if (!element) return `no visible element matches ${step.selector}`;
+	showFocusRing(element);
 
 	switch (step.action) {
 		case 'click':
@@ -520,6 +529,33 @@ function loadFrame(path) {
 		app.src = path;
 		setTimeout(done, 5000);
 	});
+}
+
+// the ring lives in the app document and ignores the pointer, so replay can still click through it
+const FOCUS_RING_ID = 'harness-focus-ring';
+
+function showFocusRing(element) {
+	const doc = element.ownerDocument;
+	let ring = doc.getElementById(FOCUS_RING_ID);
+	if (!ring) {
+		ring = doc.createElement('div');
+		ring.id = FOCUS_RING_ID;
+		// colors are hardcoded: the app document cannot see the harness custom properties
+		ring.style.cssText =
+			'position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #7c9cff;border-radius:4px;box-shadow:0 0 0 3px rgba(124,156,255,.3);';
+		doc.body.append(ring);
+	}
+	const { left, top, width, height } = element.getBoundingClientRect();
+	Object.assign(ring.style, {
+		left: `${left}px`,
+		top: `${top}px`,
+		width: `${width}px`,
+		height: `${height}px`
+	});
+}
+
+function hideFocusRing() {
+	iframeDoc()?.getElementById(FOCUS_RING_ID)?.remove();
 }
 
 async function waitForElement(selector, timeout = 3000) {
@@ -970,6 +1006,51 @@ $('clear-steps').addEventListener('click', () => {
 });
 addStepButton.addEventListener('click', addStep);
 $('replay').addEventListener('click', () => (paused ? continueReplay() : replay()));
+
+// reorder by dragging a step row onto the row it should take the place of
+stepsEl.addEventListener('dragstart', (event) => {
+	const row = event.target.closest('li[data-step]');
+	if (!row || replaying) {
+		event.preventDefault();
+		return;
+	}
+	dragFrom = Number(row.dataset.step);
+	event.dataTransfer.effectAllowed = 'move';
+	// Firefox only starts a drag when some data is set
+	event.dataTransfer.setData('text/plain', row.dataset.step);
+	row.classList.add('dragging');
+});
+
+stepsEl.addEventListener('dragover', (event) => {
+	if (dragFrom === null) return;
+	const row = event.target.closest('li[data-step]');
+	if (!row) return;
+	event.preventDefault();
+	for (const other of stepsEl.children) other.classList.toggle('drop-target', other === row);
+});
+
+stepsEl.addEventListener('drop', (event) => {
+	const row = event.target.closest('li[data-step]');
+	if (dragFrom === null || !row) return;
+	event.preventDefault();
+	moveStep(dragFrom, Number(row.dataset.step));
+});
+
+stepsEl.addEventListener('dragend', clearDrag);
+
+function clearDrag() {
+	dragFrom = null;
+	for (const row of stepsEl.children) row.classList.remove('dragging', 'drop-target');
+}
+
+function moveStep(from, to) {
+	if (from === to) return clearDrag();
+	const [moved] = steps.splice(from, 1);
+	steps.splice(to, 0, moved);
+	clearDrag();
+	renderSteps();
+	renderCode();
+}
 
 $('tests-panel').addEventListener('click', (event) => {
 	const button = event.target.closest('button[data-spec]');
