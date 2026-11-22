@@ -51,7 +51,8 @@ The iframe path is relative (so `http://localhost:5173/route`, will just show `/
   `<step>-<testid>.png` (element shots add `-element`), where the suite is the
   spec file of the test loaded from the Tests tab. A `!` marks steps recorded at
   the same moment, such as a label and the control it forwards the click to.
-  Drag a step onto another to reorder them.
+  Drag a step between rows to reorder it. Dropping above a group header moves the
+  step out of the group, and dropping it into another group joins that group.
 - **Replay** - runs the step list inside the iframe: navigations, clicks, fills,
   presses, assertions and recorded response waits, with a configurable delay
   between steps. Click the dot
@@ -66,7 +67,12 @@ The iframe path is relative (so `http://localhost:5173/route`, will just show `/
 - **Tests** - every `*.spec.ts` under the tests directory, with its test titles
   and source. **Load** turns a test's supported statements back into steps in the
   Actions tab and reports lines it could not represent (`getByRole`, waits,
-  title/URL assertions).
+  title/URL assertions). `test.step(...)` blocks load as collapsible groups,
+  indented under their group name and collapsed by default. Click a group name to
+  select it and new recordings are added to the end of that group; a collapsed
+  group records outside it. Type a name in the field under the list and press
+  **New group** (or Enter) to add an empty group at the bottom, selected and ready
+  to record into.
 
 ## New Workflow
 

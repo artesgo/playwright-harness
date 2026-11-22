@@ -59,6 +59,13 @@ let paused = false;
 let resumeReplay = null;
 let currentStep = null;
 let dragFrom = null;
+let dropAt = null;
+let dropGroup = null;
+let dropKey = '';
+let collapsedGroups = new Set();
+let createdGroups = new Map();
+let selectedGroup = null;
+let nextGroupId = 0;
 let specFiles = [];
 
 const action = () => $('action').value;
@@ -105,31 +112,50 @@ function stepCall(step) {
 // arrive before the generated test begins waiting for it.
 function stepLines(steps) {
 	let index = 0;
+	let open = [];
 	const folder = `${testsDir}/${suite}`;
-	return groupWaits(steps).flatMap(({ step, waits }) => {
-		const lines = [];
+	const tabs = (depth) => '\t'.repeat(depth + 1);
+	const lines = [];
+	for (const { step, waits } of groupWaits(steps)) {
+		const path = step.group ?? [];
+		let common = 0;
+		while (common < open.length && common < path.length && open[common].id === path[common].id)
+			common++;
+		while (open.length > common) {
+			open.pop();
+			lines.push(`${tabs(open.length)}});`);
+		}
+		for (let depth = common; depth < path.length; depth++) {
+			lines.push(`${tabs(depth)}await test.step(${quote(path[depth].name)}, async () => {`);
+			open.push(path[depth]);
+		}
+		const pad = tabs(open.length);
 		if (!waits.length) {
-			lines.push(`\tawait ${stepCall(step)};`);
+			lines.push(`${pad}await ${stepCall(step)};`);
 		} else {
 			lines.push(
-				'\tawait Promise.all([',
-				`\t\t${stepCall(step)},`,
-				...waits.map((wait) => `\t\t${stepCall(wait)},`),
-				'\t]);'
+				`${pad}await Promise.all([`,
+				`${pad}\t${stepCall(step)},`,
+				...waits.map((wait) => `${pad}\t${stepCall(wait)},`),
+				`${pad}]);`
 			);
 		}
 		if (step.screenshot) {
-			lines.push(`\tawait saveScreenshot(page, ${quote(screenshotPath(folder, step, index))});`);
+			lines.push(`${pad}await saveScreenshot(page, ${quote(screenshotPath(folder, step, index))});`);
 		}
 		if (step.elementShot) {
-			const path = screenshotPath(folder, { selector: step.elementShot }, index, '-element');
+			const elementPath = screenshotPath(folder, { selector: step.elementShot }, index, '-element');
 			lines.push(
-				`\tawait saveElementScreenshot(page, ${quote(step.elementShot)}, ${quote(path)});`
+				`${pad}await saveElementScreenshot(page, ${quote(step.elementShot)}, ${quote(elementPath)});`
 			);
 		}
 		index += 1 + waits.length;
-		return lines;
-	});
+	}
+	while (open.length) {
+		open.pop();
+		lines.push(`${tabs(open.length)}});`);
+	}
+	return lines;
 }
 
 function describeStep(step) {
@@ -204,24 +230,58 @@ function renderFields() {
 	addStepButton.disabled = !!message || replaying;
 }
 
+function groupHeaderHtml(group, depth, hidden) {
+	const collapsed = collapsedGroups.has(group.id);
+	const selected = selectedGroup?.at(-1)?.id === group.id;
+	return `<li class="group-head${selected ? ' selected' : ''}" data-group-id="${group.id}" style="--depth:${depth}"${hidden ? ' hidden' : ''}><button type="button" class="group-toggle" data-group="${group.id}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} group ${escapeHtml(group.name)}"><span aria-hidden="true">${collapsed ? '▸' : '▾'}</span></button><button type="button" class="group-select" data-select-group="${group.id}" aria-pressed="${selected}" title="Record new steps into this group">${escapeHtml(group.name)} ${selected ? '...recording here...' : ''}</button></li>`;
+}
+
+function stepHtml(step, index, path, hidden) {
+	const info = describeStep(step);
+	const shot = !!step.screenshot;
+	const shotDisabled = replaying || step.action === 'awaitResponse';
+	const elementShot = !!step.elementShot;
+	const elementDisabled = replaying || step.action === 'awaitResponse';
+	const warn = recordedAtSameTime(steps, step, index);
+	const classes = [step === currentStep ? 'current' : '', path.length ? 'grouped' : '']
+		.filter(Boolean)
+		.join(' ');
+	return `<li data-step="${index}" draggable="${!replaying}" class="${classes}" style="--depth:${path.length}"${hidden ? ' hidden' : ''}>${warn ? '<span class="warn" title="Another action was recorded at the same time" aria-label="Another action was recorded at the same time">!</span>' : ''}<span class="step-text"><strong>${escapeHtml(info.label)}</strong><span class="step-detail">${escapeHtml(info.detail)}</span></span><button class="icon breakpoint${step.breakpoint ? ' on' : ''}" data-break="${index}" aria-pressed="${!!step.breakpoint}" title="Breakpoint: pause before this step" aria-label="Toggle breakpoint for step ${index + 1}">●</button><button class="icon camera${shot ? ' on' : ''}" data-shot="${index}" aria-pressed="${shot}" title="Page screenshot after this step" aria-label="Toggle page screenshot after step ${index + 1}"${shotDisabled ? ' disabled' : ''}>${CAMERA_ICON}</button><button class="icon element-shot${elementShot ? ' on' : ''}" data-element-shot="${index}" aria-pressed="${elementShot}" title="Element screenshot after this step" aria-label="Toggle element screenshot after step ${index + 1}"${elementDisabled ? ' disabled' : ''}>${ELEMENT_ICON}</button><button class="icon" data-index="${index}" aria-label="Remove step"${replaying ? ' disabled' : ''}>×</button></li>`;
+}
+
 function renderSteps() {
-	stepsEl.innerHTML = steps
-		.map((step, index) => {
-			const info = describeStep(step);
-			const shot = !!step.screenshot;
-			const shotDisabled = replaying || step.action === 'awaitResponse';
-			const elementShot = !!step.elementShot;
-			const elementDisabled = replaying || step.action === 'awaitResponse';
-			const warn = recordedAtSameTime(steps, step, index);
-			const current = step === currentStep;
-			return `<li data-step="${index}" draggable="${!replaying}" class="${current ? 'current' : ''}">${warn ? '<span class="warn" title="Another action was recorded at the same time" aria-label="Another action was recorded at the same time">!</span>' : ''}<span class="step-text"><strong>${escapeHtml(info.label)}</strong><span class="step-detail">${escapeHtml(info.detail)}</span></span><button class="icon breakpoint${step.breakpoint ? ' on' : ''}" data-break="${index}" aria-pressed="${!!step.breakpoint}" title="Breakpoint: pause before this step" aria-label="Toggle breakpoint for step ${index + 1}">●</button><button class="icon camera${shot ? ' on' : ''}" data-shot="${index}" aria-pressed="${shot}" title="Page screenshot after this step" aria-label="Toggle page screenshot after step ${index + 1}"${shotDisabled ? ' disabled' : ''}>${CAMERA_ICON}</button><button class="icon element-shot${elementShot ? ' on' : ''}" data-element-shot="${index}" aria-pressed="${elementShot}" title="Element screenshot after this step" aria-label="Toggle element screenshot after step ${index + 1}"${elementDisabled ? ' disabled' : ''}>${ELEMENT_ICON}</button><button class="icon" data-index="${index}" aria-label="Remove step"${replaying ? ' disabled' : ''}>×</button></li>`;
-		})
-		.join('');
+	const rows = [];
+	let previous = [];
+	for (const [index, step] of steps.entries()) {
+		const path = step.group ?? [];
+		let common = 0;
+		while (
+			common < previous.length &&
+			common < path.length &&
+			previous[common].id === path[common].id
+		)
+			common++;
+		for (let depth = common; depth < path.length; depth++) {
+			const hidden = path.slice(0, depth).some((group) => collapsedGroups.has(group.id));
+			rows.push(groupHeaderHtml(path[depth], depth, hidden));
+		}
+		const hidden = path.some((group) => collapsedGroups.has(group.id));
+		rows.push(stepHtml(step, index, path, hidden));
+		previous = path;
+	}
+	const used = new Set(steps.flatMap((step) => (step.group ?? []).map((group) => group.id)));
+	for (const group of createdGroups.values()) {
+		if (!used.has(group.id)) rows.push(groupHeaderHtml(group, 0, false));
+	}
+	stepsEl.innerHTML = rows.join('');
 	stepsEl.querySelector('.current')?.scrollIntoView({ block: 'nearest' });
-	stepsEl.hidden = !steps.length;
-	stepsHint.hidden = !!steps.length;
-	clearButton.disabled = !steps.length || replaying;
+	const hasRows = !!steps.length || createdGroups.size > 0;
+	stepsEl.hidden = !hasRows;
+	stepsHint.hidden = hasRows;
+	clearButton.disabled = !hasRows || replaying;
 	addStepButton.disabled = !!errorMessage() || replaying;
+	$('add-group').disabled = replaying;
+	$('group-name').disabled = replaying;
 	renderReplayButton();
 }
 
@@ -238,7 +298,7 @@ function renderCode() {
 
 function addStep() {
 	if (replaying || errorMessage()) return;
-	steps = [...steps, { action: action(), selector: selector(), value: value(), path: shotPath() }];
+	insertStep({ action: action(), selector: selector(), value: value(), path: shotPath() });
 	renderSteps();
 	renderCode();
 }
@@ -280,13 +340,43 @@ function makeStep(action, fields = {}) {
 	return { action, selector: '', value: '', path: '', ...fields };
 }
 
-function recordStep(step) {
-	if (!replaying) {
-		step.time = Date.now();
-		steps = [...steps, step];
-		renderSteps();
-		renderCode();
+// a selected group takes recordings at the end of its block; a collapsed one takes none
+function recordingGroup() {
+	if (!selectedGroup) return null;
+	return selectedGroup.some((group) => collapsedGroups.has(group.id)) ? null : selectedGroup;
+}
+
+function groupPath(id) {
+	for (const step of steps) {
+		const depth = (step.group ?? []).findIndex((group) => group.id === id);
+		if (depth >= 0) return step.group.slice(0, depth + 1);
 	}
+	const created = createdGroups.get(id);
+	return created ? [created] : null;
+}
+
+function insertStep(step) {
+	const path = recordingGroup();
+	if (!path) {
+		steps.push(step);
+		return;
+	}
+	const ids = path.map((group) => group.id);
+	let at = steps.length;
+	steps.forEach((other, index) => {
+		const otherPath = other.group ?? [];
+		if (ids.every((id, depth) => otherPath[depth]?.id === id)) at = index + 1;
+	});
+	step.group = path;
+	steps.splice(at, 0, step);
+}
+
+function recordStep(step) {
+	if (replaying) return;
+	step.time = Date.now();
+	insertStep(step);
+	renderSteps();
+	renderCode();
 }
 
 function framePath() {
@@ -422,6 +512,7 @@ async function replay() {
 		for (const [index, { step, waits }] of groups.entries()) {
 			const label = describeStep(step).label;
 			currentStep = step;
+			for (const group of step.group ?? []) collapsedGroups.delete(group.id);
 			renderSteps();
 			if (step.breakpoint || waits.some((wait) => wait.breakpoint)) await pauseBefore(index, label);
 
@@ -966,6 +1057,13 @@ function loadTest(specIndex, testIndex) {
 	}
 
 	steps = parsed;
+	collapsedGroups = new Set(
+		parsed.flatMap((step) => (step.group ?? []).map((group) => group.id))
+	);
+	createdGroups = new Map();
+	selectedGroup = null;
+	nextGroupId =
+		Math.max(-1, ...parsed.flatMap((step) => (step.group ?? []).map((group) => group.id))) + 1;
 	suite = suiteName(spec.file);
 	$('scenario').value = suite;
 	setTab('actions');
@@ -1000,14 +1098,34 @@ $('refresh-tests').addEventListener('click', refreshSpecs);
 $('action').addEventListener('change', renderFields);
 $('clear-steps').addEventListener('click', () => {
 	steps = [];
+	collapsedGroups = new Set();
+	createdGroups = new Map();
+	selectedGroup = null;
 	renderSteps();
 	renderCode();
 	setStatus('');
 });
 addStepButton.addEventListener('click', addStep);
+$('add-group').addEventListener('click', () => {
+	if (replaying) return;
+	const input = $('group-name');
+	const name = input.value.trim();
+	if (!name) {
+		input.focus();
+		return;
+	}
+	input.value = '';
+	const group = { id: nextGroupId++, name };
+	createdGroups.set(group.id, group);
+	selectedGroup = [group];
+	renderSteps();
+});
+$('group-name').addEventListener('keydown', (event) => {
+	if (event.key === 'Enter') $('add-group').click();
+});
 $('replay').addEventListener('click', () => (paused ? continueReplay() : replay()));
 
-// reorder by dragging a step row onto the row it should take the place of
+// reorder by dragging a step row; the line shows where it will land and which group it joins
 stepsEl.addEventListener('dragstart', (event) => {
 	const row = event.target.closest('li[data-step]');
 	if (!row || replaying) {
@@ -1021,31 +1139,76 @@ stepsEl.addEventListener('dragstart', (event) => {
 	row.classList.add('dragging');
 });
 
+// the drop slot before a row: dropping before a group header lands outside that group,
+// before a step lands inside the step's group
+function dropSlot(row) {
+	if (row.dataset.step !== undefined) {
+		const index = Number(row.dataset.step);
+		return { at: index, group: steps[index]?.group ?? null, row };
+	}
+	const path = groupPath(Number(row.dataset.groupId)) ?? [];
+	let sibling = row.nextElementSibling;
+	while (sibling && sibling.dataset.step === undefined) sibling = sibling.nextElementSibling;
+	return {
+		at: sibling ? Number(sibling.dataset.step) : steps.length,
+		group: path.length > 1 ? path.slice(0, -1) : null,
+		row
+	};
+}
+
 stepsEl.addEventListener('dragover', (event) => {
 	if (dragFrom === null) return;
-	const row = event.target.closest('li[data-step]');
-	if (!row) return;
 	event.preventDefault();
-	for (const other of stepsEl.children) other.classList.toggle('drop-target', other === row);
+	const rows = [...stepsEl.children].filter(
+		(row) => !row.hidden && (row.dataset.step !== undefined || row.classList.contains('group-head'))
+	);
+	let slot = { at: steps.length, group: null, row: null };
+	for (const row of rows) {
+		const rect = row.getBoundingClientRect();
+		if (event.clientY < rect.top + rect.height / 2) {
+			slot = dropSlot(row);
+			break;
+		}
+	}
+	showDropLine(slot, rows);
 });
 
+function showDropLine(slot, rows) {
+	const key = `${slot.at}:${(slot.group ?? []).map((group) => group.id).join('.')}`;
+	if (key === dropKey && stepsEl.querySelector('.drop-line')) return;
+	dropKey = key;
+	dropAt = slot.at;
+	dropGroup = slot.group;
+	stepsEl.querySelector('.drop-line')?.remove();
+	const line = document.createElement('li');
+	line.className = 'drop-line';
+	line.setAttribute('aria-hidden', 'true');
+	const boundary = slot.row ?? rows.at(-1);
+	line.style.top = `${slot.row ? boundary.offsetTop : boundary.offsetTop + boundary.offsetHeight}px`;
+	stepsEl.append(line);
+}
+
 stepsEl.addEventListener('drop', (event) => {
-	const row = event.target.closest('li[data-step]');
-	if (dragFrom === null || !row) return;
+	if (dragFrom === null || dropAt === null) return;
 	event.preventDefault();
-	moveStep(dragFrom, Number(row.dataset.step));
+	moveStep(dragFrom, dropAt > dragFrom ? dropAt - 1 : dropAt, dropGroup);
 });
 
 stepsEl.addEventListener('dragend', clearDrag);
 
 function clearDrag() {
 	dragFrom = null;
-	for (const row of stepsEl.children) row.classList.remove('dragging', 'drop-target');
+	dropAt = null;
+	dropGroup = null;
+	dropKey = '';
+	stepsEl.querySelector('.drop-line')?.remove();
+	for (const row of stepsEl.children) row.classList.remove('dragging');
 }
 
-function moveStep(from, to) {
-	if (from === to) return clearDrag();
+function moveStep(from, to, group) {
 	const [moved] = steps.splice(from, 1);
+	if (group) moved.group = group;
+	else delete moved.group;
 	steps.splice(to, 0, moved);
 	clearDrag();
 	renderSteps();
@@ -1067,6 +1230,23 @@ copyButton.addEventListener('click', async () => {
 });
 
 stepsEl.addEventListener('click', (event) => {
+	const select = event.target.closest('button[data-select-group]');
+	if (select) {
+		const id = Number(select.dataset.selectGroup);
+		selectedGroup = selectedGroup?.at(-1)?.id === id ? null : groupPath(id);
+		renderSteps();
+		return;
+	}
+
+	const group = event.target.closest('button[data-group]');
+	if (group) {
+		const id = Number(group.dataset.group);
+		if (collapsedGroups.has(id)) collapsedGroups.delete(id);
+		else collapsedGroups.add(id);
+		renderSteps();
+		return;
+	}
+
 	const toggle = event.target.closest('button[data-break]');
 	if (toggle) {
 		const step = steps[Number(toggle.dataset.break)];

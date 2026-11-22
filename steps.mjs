@@ -34,6 +34,26 @@ function expandAliases(body) {
 	return result;
 }
 
+// test.step('name', async () => { ... }) wraps the steps inside it into a group
+function groupRanges(body) {
+	const ranges = [];
+	for (const match of body.matchAll(/\btest\.step\(\s*(['"`])([^'"`\n]*)\1/g)) {
+		const arrow = body.indexOf('=>', match.index);
+		if (arrow < 0) continue;
+		const start = body.indexOf('{', arrow);
+		if (start < 0 || body.slice(arrow + 2, start).trim()) continue;
+		let depth = 0;
+		for (let index = start; index < body.length; index++) {
+			if (body[index] === '{') depth++;
+			else if (body[index] === '}' && --depth === 0) {
+				ranges.push({ id: ranges.length, name: match[2], start, end: index });
+				break;
+			}
+		}
+	}
+	return ranges;
+}
+
 const PATTERNS = [
 	[/page\.goto\(\s*(['"`])(.*?)\1\s*\)/g, (m) => ({ action: 'goto', value: m[2] })],
 	[
@@ -68,13 +88,24 @@ const PATTERNS = [
 
 export function parseTestSteps(source, title) {
 	const body = expandAliases(testBody(source, title));
+	const ranges = groupRanges(body);
 	const found = [];
 
 	for (const [pattern, build] of PATTERNS) {
 		for (const match of body.matchAll(pattern)) {
+			const group = ranges
+				.filter((range) => range.start < match.index && match.index < range.end)
+				.sort((left, right) => left.start - right.start)
+				.map((range) => ({ id: range.id, name: range.name }));
 			found.push({
 				index: match.index,
-				step: { selector: '', value: '', path: '', ...build(match) }
+				step: {
+					selector: '',
+					value: '',
+					path: '',
+					...build(match),
+					...(group.length ? { group } : {})
+				}
 			});
 		}
 	}
@@ -82,5 +113,9 @@ export function parseTestSteps(source, title) {
 	found.sort((left, right) => left.index - right.index);
 
 	const awaits = (body.match(/\bawait\b/g) ?? []).length;
-	return { steps: found.map((entry) => entry.step), skipped: Math.max(0, awaits - found.length) };
+	const wrappers = (body.match(/\bawait\s+test\.step\s*\(/g) ?? []).length;
+	return {
+		steps: found.map((entry) => entry.step),
+		skipped: Math.max(0, awaits - found.length - wrappers)
+	};
 }

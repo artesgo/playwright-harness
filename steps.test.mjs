@@ -61,3 +61,33 @@ test('reports statements the harness cannot replay', () => {
 test('returns nothing for an unknown title', () => {
 	assert.deepEqual(parseTestSteps(SOURCE, 'nope'), { steps: [], skipped: 0 });
 });
+
+const GROUPED = `
+test('grouped', async ({ page }) => {
+	await page.goto('/start');
+	await test.step('sign in', async () => {
+		await page.locator('[data-testid="user"]').fill('me');
+		await test.step('submit', async () => {
+			await page.locator('[data-testid="go"]').click();
+		});
+	});
+	await expect(page.locator('[data-testid="done"]')).toBeVisible();
+});
+`;
+
+test('nests test.step blocks as group paths', () => {
+	const { steps, skipped } = parseTestSteps(GROUPED, 'grouped');
+
+	assert.deepEqual(
+		steps.map((step) => step.action),
+		['goto', 'fill', 'click', 'expectVisible']
+	);
+	assert.equal(steps[0].group, undefined);
+	assert.deepEqual(steps[1].group, [{ id: 0, name: 'sign in' }]);
+	assert.deepEqual(steps[2].group, [
+		{ id: 0, name: 'sign in' },
+		{ id: 1, name: 'submit' }
+	]);
+	assert.equal(steps[3].group, undefined);
+	assert.equal(skipped, 0);
+});

@@ -285,15 +285,17 @@
 			}
 
 			.step-list {
+				position: relative;
 				margin: 0.6rem 0 0;
-				padding-left: 1.25rem;
+				padding-left: 0;
 			}
 
 			.step-list li {
 				display: flex;
 				align-items: center;
 				gap: 0.4rem;
-				padding: 0.15rem 0;
+				padding: 0.15rem 1rem;
+				padding-right: 0;
 			}
 
 			.step-list li[draggable='true'] {
@@ -304,10 +306,105 @@
 				opacity: 0.4;
 			}
 
-			.step-list li.drop-target {
-				outline: 2px dashed var(--accent);
-				outline-offset: -2px;
+			.step-list li.drop-line {
+				position: absolute;
+				left: 0;
+				right: 0;
+				height: 2px;
+				margin: 0;
+				padding: 0;
+				transform: translateY(-1px);
+				border-radius: 999px;
+				background: var(--accent);
+				box-shadow: 0 0 6px 2px color-mix(in srgb, var(--accent) 70%, transparent);
+				animation: drop-pulse 0.9s ease-in-out infinite;
+			}
+
+			.step-list li.drop-line::before,
+			.step-list li.drop-line::after {
+				content: '';
+				position: absolute;
+				top: 50%;
+				border: 6px solid transparent;
+				transform: translateY(-50%);
+				filter: drop-shadow(0 0 3px var(--accent));
+			}
+
+			.step-list li.drop-line::before {
+				left: -2px;
+				border-right: 0;
+				border-left: 7px solid var(--accent);
+			}
+
+			.step-list li.drop-line::after {
+				right: -2px;
+				border-left: 0;
+				border-right: 7px solid var(--accent);
+			}
+
+			@keyframes drop-pulse {
+				0%,
+				100% {
+					opacity: 0.65;
+					box-shadow: 0 0 4px 1px color-mix(in srgb, var(--accent) 55%, transparent);
+				}
+
+				50% {
+					opacity: 1;
+					box-shadow: 0 0 12px 4px color-mix(in srgb, var(--accent) 80%, transparent);
+				}
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				.step-list li.drop-line {
+					animation: none;
+				}
+			}
+
+			.step-list li.group-head {
+				margin-left: calc(var(--depth, 0) * 1rem);
+				padding: 0.15rem 0;
+			}
+
+			.group-toggle {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				width: 1.2rem;
+				border: 0;
+				background: transparent;
+				color: var(--fg);
+				padding: 0.1rem 0;
+				cursor: pointer;
+			}
+
+			.group-select {
+				flex: 1;
+				min-width: 0;
+				border: 0;
 				border-radius: 0.25rem;
+				background: transparent;
+				color: var(--fg);
+				font: inherit;
+				font-weight: 600;
+				text-align: left;
+				padding: 0.1rem 0.25rem;
+				cursor: pointer;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.group-head.selected .group-select {
+				background: color-mix(in srgb, var(--accent) 28%, transparent);
+				box-shadow: inset 2px 0 0 var(--accent);
+			}
+
+			.step-list li.grouped {
+				margin-left: calc(var(--depth, 1) * 1rem);
+				padding-inline: 0.3rem;
+				border-radius: 0.25rem;
+				background: color-mix(in srgb, var(--fg) 7%, transparent);
 			}
 
 			.step-list li.current {
@@ -512,6 +609,14 @@
 						<p class="hint" id="action-status" hidden></p>
 
 						<ol class="step-list" id="steps" hidden></ol>
+						<div class="row group-add">
+							<input
+								id="group-name"
+								placeholder="New group name"
+								aria-label="New group name"
+							/>
+							<button id="add-group">New group</button>
+						</div>
 						<p class="hint" id="steps-hint">Add actions to build a test.</p>
 					</div>
 
