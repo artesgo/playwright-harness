@@ -55,7 +55,7 @@ The iframe path is relative (so `http://localhost:5173/route`, will just show `/
   step out of the group, and dropping it into another group joins that group.
 - **Replay** - runs the step list inside the iframe: navigations, clicks, fills,
   presses, assertions and recorded response waits, with a configurable delay
-  between steps. Click the dot
+  between steps and find timeout for each step's element or expected text. Click the dot
   next to a step to set a breakpoint; replay pauses before it and **Continue**
   resumes. The current step is highlighted in the list, and a ring is drawn
   around the element about to be clicked or otherwise interacted with.

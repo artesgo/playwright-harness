@@ -506,6 +506,8 @@ async function replay() {
 	const groups = groupWaits(steps);
 	const total = steps.length;
 	const delay = Math.max(0, Number($('replay-delay').value) || 0);
+	const timeoutValue = Number($('replay-timeout').value);
+	const timeout = Number.isFinite(timeoutValue) ? Math.max(0, timeoutValue) : 3000;
 	let skipped = 0;
 
 	try {
@@ -519,7 +521,7 @@ async function replay() {
 			setStatus(`Replaying ${index + 1}/${groups.length}: ${label}`);
 
 			const pending = waits.map((wait) => waitForNetwork(wait.value));
-			const error = await runStep(step);
+			const error = await runStep(step, timeout);
 			if (error) {
 				setStatus(`Replay stopped at step ${index + 1} (${label}): ${error}`);
 				return;
@@ -568,7 +570,7 @@ function continueReplay() {
 	resume?.();
 }
 
-async function runStep(step) {
+async function runStep(step, timeout = 3000) {
 	if (step.action === 'screenshotPage' || step.action === 'screenshotElement') return '';
 	if (step.action === 'awaitResponse') return 'await response needs an action before it';
 
@@ -579,8 +581,19 @@ async function runStep(step) {
 		return '';
 	}
 
-	const element = await waitForElement(step.selector);
-	if (!element) return `no visible element matches ${step.selector}`;
+	const element = await waitForElement(
+		step.selector,
+		timeout,
+		step.action === 'expectText'
+			? (candidate) => (candidate.textContent ?? '').includes(step.value)
+			: undefined
+	);
+	if (!element) {
+		if (step.action === 'expectText' && visibleElement(step.selector)) {
+			return `${step.selector} does not contain "${step.value}"`;
+		}
+		return `no visible element matches ${step.selector}`;
+	}
 	showFocusRing(element);
 
 	switch (step.action) {
@@ -649,19 +662,24 @@ function hideFocusRing() {
 	iframeDoc()?.getElementById(FOCUS_RING_ID)?.remove();
 }
 
-async function waitForElement(selector, timeout = 3000) {
+function visibleElement(selector, matches = () => true) {
+	try {
+		return (
+			findElements(selector).find((element) => isVisible(element) && matches(element)) ?? null
+		);
+	} catch {
+		return null;
+	}
+}
+
+async function waitForElement(selector, timeout = 3000, matches) {
 	const deadline = Date.now() + timeout;
-	while (Date.now() < deadline) {
-		let element;
-		try {
-			element = findElements(selector).find(isVisible);
-		} catch {
-			return null;
-		}
+	for (;;) {
+		const element = visibleElement(selector, matches);
 		if (element) return element;
+		if (Date.now() >= deadline) return null;
 		await new Promise((resolve) => setTimeout(resolve, 50));
 	}
-	return null;
 }
 
 // role= selectors are not CSS, so they need the same role/name matching Playwright uses

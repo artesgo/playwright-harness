@@ -505,6 +505,10 @@
 				width: 4rem;
 			}
 
+			.delay + .delay {
+				margin-left: 0;
+			}
+
 			ul {
 				margin: 0.25rem 0;
 				padding-left: 1.25rem;
@@ -597,12 +601,22 @@
 						<p class="hint" id="step-error" hidden></p>
 
 						<div class="row">
-							<button class="primary" id="add-step">Add step</button>
+							<button class="primary" id="add-step">Add</button>
 							<button id="replay" disabled>Replay</button>
 							<button id="clear-steps" disabled>Clear</button>
 							<label class="delay"
 								>Delay
 								<input id="replay-delay" type="number" min="0" step="50" value="200" /> ms</label
+							>
+							<label class="delay" title="How long replay waits for a step's element"
+								>timeout
+								<input
+									id="replay-timeout"
+									type="number"
+									min="0"
+									step="500"
+									value="3000"
+								/> ms</label
 							>
 						</div>
 

@@ -91,3 +91,28 @@ test('nests test.step blocks as group paths', () => {
 	assert.equal(steps[3].group, undefined);
 	assert.equal(skipped, 0);
 });
+
+const TEST_ID_SOURCE = `
+test('by test id', async ({ page }) => {
+	await page.goto('/start');
+	const name = page.getByTestId('name');
+	await name.fill('hello');
+	await page.getByTestId("agree").click();
+	await expect(page.getByTestId('message')).toBeVisible();
+});
+`;
+
+test('parses getByTestId like a data-testid locator', () => {
+	const { steps, skipped } = parseTestSteps(TEST_ID_SOURCE, 'by test id');
+
+	assert.deepEqual(
+		steps.map((step) => [step.action, step.selector]),
+		[
+			['goto', ''],
+			['fill', '[data-testid="name"]'],
+			['click', '[data-testid="agree"]'],
+			['expectVisible', '[data-testid="message"]']
+		]
+	);
+	assert.equal(skipped, 0);
+});

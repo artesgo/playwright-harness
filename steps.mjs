@@ -1,5 +1,6 @@
 // Parses harness-shaped Playwright tests back into steps, so a test can be
 // loaded into the Actions tab. Browser-safe: no Node APIs.
+import { cssString } from './record.mjs';
 
 function escapeRegExp(text) {
 	return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -21,6 +22,14 @@ function testBody(source, title) {
 		else if (source[index] === '}' && --depth === 0) return source.slice(start + 1, index);
 	}
 	return '';
+}
+
+// page.getByTestId('x') is the same selector as page.locator('[data-testid="x"]')
+function expandTestIds(body) {
+	return body.replaceAll(
+		/page\.getByTestId\(\s*(['"`])(.*?)\1\s*\)/g,
+		(_, _quote, id) => `page.locator('[data-testid="${cssString(id)}"]')`
+	);
 }
 
 // const password = page.locator('#password') -> inline the locator at every use
@@ -87,7 +96,7 @@ const PATTERNS = [
 ];
 
 export function parseTestSteps(source, title) {
-	const body = expandAliases(testBody(source, title));
+	const body = expandAliases(expandTestIds(testBody(source, title)));
 	const ranges = groupRanges(body);
 	const found = [];
 
